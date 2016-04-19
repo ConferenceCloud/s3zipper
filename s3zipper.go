@@ -56,7 +56,7 @@ func main() {
 	initAwsBucket()
 	initRedis()
 
-	fmt.Println("Running on port", config.Port)
+	fmt.Println("Running on port:", config.Port)
 	http.HandleFunc("/", handler)
 	http.ListenAndServe(":"+config.Port, nil)
 }
@@ -108,6 +108,7 @@ func parseFileDates(files []*redisFile) {
 }
 
 func initAwsBucket() {
+	fmt.Println("Initializing S3 bucket:", config.Bucket)
 	expiration := time.Now().Add(time.Hour * 1)
 	auth, err := aws.GetAuth(config.AccessKey, config.SecretKey, "", expiration) //"" = token which isn't needed
 	if err != nil {
@@ -118,17 +119,20 @@ func initAwsBucket() {
 }
 
 func initRedis() {
+	fmt.Println("Initializing redis connection.")
 	redisPool = &redigo.Pool{
 		MaxIdle:     10,
 		IdleTimeout: 1 * time.Second,
 		Dial: func() (redigo.Conn, error) {
 			c, err := redigo.Dial("tcp", config.RedisServerAndPort)
 			if err != nil {
+				fmt.Println("Error connecting to redis:", err)
 				return nil, err
 			}
 			if auth := config.RedisAuth; auth != "" {
 				if _, err := c.Do("AUTH", auth); err != nil {
 					c.Close()
+					fmt.Println("Redis authentication failed:", err)
 					return nil, err
 				}
 			}
@@ -137,7 +141,7 @@ func initRedis() {
 		TestOnBorrow: func(c redigo.Conn, t time.Time) (err error) {
 			_, err = c.Do("PING")
 			if err != nil {
-				panic("Error connecting to redis")
+				panic("Error connecting to redis!")
 			}
 			return
 		},
@@ -161,7 +165,7 @@ func getFilesFromRedis(ref string) (files []*redisFile, err error) {
 	// Get the value from Redis
 	result, err := redis.Do("GET", "zip:"+ref)
 	if err != nil || result == nil {
-		err = errors.New("Access Denied (sorry your link has timed out)")
+		err = errors.New("Access Denied (link expired)")
 		return
 	}
 
@@ -169,7 +173,7 @@ func getFilesFromRedis(ref string) (files []*redisFile, err error) {
 	var resultByte []byte
 	var ok bool
 	if resultByte, ok = result.([]byte); !ok {
-		err = errors.New("Error converting data stream to bytes")
+		err = errors.New("Error converting data stream to bytes.")
 		return
 	}
 
@@ -191,7 +195,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	// Get "ref" URL params
 	refs, ok := r.URL.Query()["ref"]
 	if !ok || len(refs) < 1 {
-		http.Error(w, "S3 File Zipper. Pass ?ref= to use.", 500)
+		http.Error(w, "Missing required parameters. Pass ?ref= to use.", 500)
 		return
 	}
 	ref := refs[0]
