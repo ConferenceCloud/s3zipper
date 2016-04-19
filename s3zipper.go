@@ -26,7 +26,7 @@ type configuration struct {
 	Bucket             string
 	Region             string
 	RedisServerAndPort string
-	RedisAuth          string
+	RedisPassword      string
 	Port               string
 }
 
@@ -90,7 +90,7 @@ func initConfig() {
 		Bucket:             os.Getenv("AWS_BUCKET"),
 		Region:             defaults(os.Getenv("AWS_REGION"), "us-east-1"),
 		RedisServerAndPort: os.Getenv("REDIS_URL"),
-		RedisAuth:          os.Getenv("REDIS_AUTH"),
+		RedisPassword:      os.Getenv("REDIS_PASSWORD"),
 		Port:               defaults(os.Getenv("PORT"), "8000"),
 	}
 }
@@ -129,7 +129,7 @@ func initRedis() {
 				fmt.Println("Error connecting to redis:", err)
 				return nil, err
 			}
-			if auth := config.RedisAuth; auth != "" {
+			if auth := config.RedisPassword; auth != "" {
 				if _, err := c.Do("AUTH", auth); err != nil {
 					c.Close()
 					fmt.Println("Redis authentication failed:", err)
