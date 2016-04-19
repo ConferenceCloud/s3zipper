@@ -39,9 +39,9 @@ type redisFile struct {
 	Folder   string
 	S3Path   string
 	// Optional - we use are Teamwork.com but feel free to rmove
-	FileID       int64 `json:",string"`
-	ProjectID    int64 `json:",string"`
-	ProjectName  string
+	TrackID      int64 `json:",string"`
+	PlaylistID   int64 `json:",string"`
+	PlaylistName string
 	Modified     string
 	ModifiedTime time.Time
 }
@@ -64,7 +64,7 @@ func main() {
 func test() {
 	var err error
 	var files []*redisFile
-	jsonData := "[{\"S3Path\":\"1\\/p23216.tf_A89A5199-F04D-A2DE-5824E635AC398956.Avis_Rent_A_Car_Print_Reservation.pdf\",\"FileVersionId\":\"4164\",\"FileName\":\"Avis Rent A Car_ Print Reservation.pdf\",\"ProjectName\":\"Superman\",\"ProjectID\":\"23216\",\"Folder\":\"\",\"FileID\":\"4169\"},{\"modified\":\"2015-07-18T02:05:04Z\",\"S3Path\":\"1\\/p23216.tf_351310E0-DF49-701F-60601109C2792187.a1.jpg\",\"FileVersionId\":\"4165\",\"FileName\":\"a1.jpg\",\"ProjectName\":\"Superman\",\"ProjectID\":\"23216\",\"Folder\":\"Level 1\\/Level 2 x\\/Level 3\",\"FileID\":\"4170\"}]"
+	jsonData := "[{\"S3Path\":\"audio/7W/7W Abandoned.mp3\",\"FileName\":\"7W Abandoned.mp3\",\"Folder\":\"7W\",\"TrackID\":\"4169\",\"PlaylistID\":\"120990\",\"PlaylistName\":\"Test Playlist\"},{\"S3Path\":\"audio/7W/7W Ancient.mp3\",\"FileName\":\"7W Ancient.mp3\",\"Folder\":\"7W/ALT\",\"TrackID\":\"4170\",\"PlaylistID\":\"120990\",\"PlaylistName\":\"Test Playlist\",\"modified\":\"2015-07-18T02:05:04Z\"}]"
 
 	resultByte := []byte(jsonData)
 
@@ -205,10 +205,10 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	if !ok && len(downloadas) > 0 {
 		downloadas[0] = makeSafeFileName.ReplaceAllString(downloadas[0], "")
 		if downloadas[0] == "" {
-			downloadas[0] = "download.zip"
+			downloadas[0] = "scorekeepers.zip"
 		}
 	} else {
-		downloadas = append(downloadas, "download.zip")
+		downloadas = append(downloadas, "scorekeepers.zip")
 	}
 
 	files, err := getFilesFromRedis(ref)
@@ -222,14 +222,14 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Disposition", "attachment; filename=\""+downloadas[0]+"\"")
 	w.Header().Add("Content-Type", "application/zip")
 
-	// Loop over files, add them to the
+	// Loop over files, add them to the zip stream
 	zipWriter := zip.NewWriter(w)
 	for _, file := range files {
 
 		// Build safe file file name
 		safeFileName := makeSafeFileName.ReplaceAllString(file.FileName, "")
 		if safeFileName == "" { // Unlikely but just in case
-			safeFileName = "file"
+			safeFileName = "Track"
 		}
 
 		// Read file from S3, log any errors
@@ -248,15 +248,15 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 		// Build a good path for the file within the zip
 		zipPath := ""
-		// Prefix project Id and name, if any (remove if you don't need)
-		if file.ProjectID > 0 {
-			zipPath += strconv.FormatInt(file.ProjectID, 10) + "."
+		// Prefix playlist ID and name, if any
+		if file.PlaylistID > 0 {
+			zipPath += strconv.FormatInt(file.PlaylistID, 10) + "."
 			// Build Safe Project Name
-			file.ProjectName = makeSafeFileName.ReplaceAllString(file.ProjectName, "")
-			if file.ProjectName == "" { // Unlikely but just in case
-				file.ProjectName = "Project"
+			file.PlaylistName = makeSafeFileName.ReplaceAllString(file.PlaylistName, "")
+			if file.PlaylistName == "" { // Unlikely but just in case
+				file.PlaylistName = "Playlist"
 			}
-			zipPath += file.ProjectName + "/"
+			zipPath += file.PlaylistName + "/"
 		}
 		// Prefix folder name, if any
 		if file.Folder != "" {
