@@ -38,12 +38,10 @@ type redisFile struct {
 	FileName string
 	Folder   string
 	S3Path   string
-	// Optional - we use are Teamwork.com but feel free to rmove
+	// Optional
 	TrackID      int64 `json:",string"`
 	PlaylistID   int64 `json:",string"`
 	PlaylistName string
-	Modified     string
-	ModifiedTime time.Time
 }
 
 func main() {
@@ -72,8 +70,6 @@ func test() {
 	if err != nil {
 		err = errors.New("Error decoding json: " + jsonData)
 	}
-
-	parseFileDates(files)
 }
 
 func initConfig() {
@@ -92,18 +88,6 @@ func initConfig() {
 		RedisServerAndPort: os.Getenv("REDIS_URL"),
 		RedisPassword:      os.Getenv("REDIS_PASSWORD"),
 		Port:               defaults(os.Getenv("PORT"), "8000"),
-	}
-}
-
-func parseFileDates(files []*redisFile) {
-	layout := "2006-01-02T15:04:05Z"
-	for _, file := range files {
-		t, err := time.Parse(layout, file.Modified)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-		file.ModifiedTime = t
 	}
 }
 
@@ -182,9 +166,6 @@ func getFilesFromRedis(ref string) (files []*redisFile, err error) {
 	if err != nil {
 		err = errors.New("Error decoding json: " + string(resultByte))
 	}
-
-	// Convert mofified date strings to time objects
-	parseFileDates(files)
 
 	return
 }
@@ -273,10 +254,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			Name:   zipPath,
 			Method: zip.Deflate,
 			Flags:  0x800,
-		}
-
-		if file.Modified != "" {
-			h.SetModTime(file.ModifiedTime)
 		}
 
 		f, _ := zipWriter.CreateHeader(h)
