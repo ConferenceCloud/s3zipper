@@ -15,9 +15,9 @@ import (
 
 	"net/http"
 
-	"github.com/maissimples/s3zipper/Godeps/_workspace/src/github.com/AdRoll/goamz/aws"
-	"github.com/maissimples/s3zipper/Godeps/_workspace/src/github.com/AdRoll/goamz/s3"
-	redigo "github.com/maissimples/s3zipper/Godeps/_workspace/src/github.com/garyburd/redigo/redis"
+	"github.com/AdRoll/goamz/aws"
+	"github.com/AdRoll/goamz/s3"
+	redigo "github.com/garyburd/redigo/redis"
 )
 
 type configuration struct {
@@ -34,6 +34,11 @@ var config configuration
 var awsBucket *s3.Bucket
 var redisPool *redigo.Pool
 
+type redisDLObject struct {
+	Name  string
+	Files []redisFile
+}
+
 type redisFile struct {
 	FileName string
 	Folder   string
@@ -45,10 +50,10 @@ type redisFile struct {
 }
 
 func main() {
-	if 1 == 0 {
-		test()
-		return
-	}
+	// if 1 == 0 {
+	// 	test()
+	// 	return
+	// }
 
 	initConfig()
 	initAwsBucket()
@@ -59,18 +64,18 @@ func main() {
 	http.ListenAndServe(":"+config.Port, nil)
 }
 
-func test() {
-	var err error
-	var files []*redisFile
-	jsonData := "[{\"S3Path\":\"audio/7W/7W Abandoned.mp3\",\"FileName\":\"7W Abandoned.mp3\",\"Folder\":\"7W\",\"TrackID\":\"4169\",\"PlaylistID\":\"120990\",\"PlaylistName\":\"Test Playlist\"},{\"S3Path\":\"audio/7W/7W Ancient.mp3\",\"FileName\":\"7W Ancient.mp3\",\"Folder\":\"7W/ALT\",\"TrackID\":\"4170\",\"PlaylistID\":\"120990\",\"PlaylistName\":\"Test Playlist\",\"modified\":\"2015-07-18T02:05:04Z\"}]"
+// func test() {
+// 	var err error
+// 	var files []*redisFile
+// 	jsonData := "[{\"S3Path\":\"audio/7W/7W Abandoned.mp3\",\"FileName\":\"7W Abandoned.mp3\",\"Folder\":\"7W\",\"TrackID\":\"4169\",\"PlaylistID\":\"120990\",\"PlaylistName\":\"Test Playlist\"},{\"S3Path\":\"audio/7W/7W Ancient.mp3\",\"FileName\":\"7W Ancient.mp3\",\"Folder\":\"7W/ALT\",\"TrackID\":\"4170\",\"PlaylistID\":\"120990\",\"PlaylistName\":\"Test Playlist\",\"modified\":\"2015-07-18T02:05:04Z\"}]"
 
-	resultByte := []byte(jsonData)
+// 	resultByte := []byte(jsonData)
 
-	err = json.Unmarshal(resultByte, &files)
-	if err != nil {
-		err = errors.New("Error decoding json: " + jsonData)
-	}
-}
+// 	err = json.Unmarshal(resultByte, &files)
+// 	if err != nil {
+// 		err = errors.New("Error decoding json: " + jsonData)
+// 	}
+// }
 
 func initConfig() {
 	defaults := func(value, def string) string {
@@ -135,13 +140,13 @@ func initRedis() {
 // Remove all other unrecognised characters apart from
 var makeSafeFileName = regexp.MustCompile(`[#<>:"/\|?*\\]`)
 
-func getFilesFromRedis(ref string) (files []*redisFile, err error) {
+func getFilesFromRedis(ref string) (filesObj redisDLObject, err error) {
 
 	// Testing - enable to test. Remove later.
-	if 1 == 0 && ref == "test" {
-		files = append(files, &redisFile{FileName: "test.zip", Folder: "", S3Path: "test/test.zip"}) // Edit and dplicate line to test
-		return
-	}
+	// if 1 == 0 && ref == "test" {
+	// 	files = append(files, &redisFile{FileName: "test.zip", Folder: "", S3Path: "test/test.zip"}) // Edit and dplicate line to test
+	// 	return
+	// }
 
 	redis := redisPool.Get()
 	defer redis.Close()
@@ -162,7 +167,7 @@ func getFilesFromRedis(ref string) (files []*redisFile, err error) {
 	}
 
 	// Decode JSON
-	err = json.Unmarshal(resultByte, &files)
+	err = json.Unmarshal(resultByte, &filesObj)
 	if err != nil {
 		err = errors.New("Error decoding json: " + string(resultByte))
 	}
@@ -181,27 +186,32 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 	ref := refs[0]
 
-	// Get "downloadas" URL params
-	downloadas, ok := r.URL.Query()["downloadas"]
-	if !ok && len(downloadas) > 0 {
-		downloadas[0] = makeSafeFileName.ReplaceAllString(downloadas[0], "")
-		if downloadas[0] == "" {
-			downloadas[0] = "scorekeepers.zip"
-		}
-	} else {
-		downloadas = append(downloadas, "scorekeepers.zip")
-	}
-
-	files, err := getFilesFromRedis(ref)
+	fileObj, err := getFilesFromRedis(ref)
+	files := fileObj.Files
 	if err != nil {
 		http.Error(w, err.Error(), 403)
 		log.Printf("%s\t%s\t%s", r.Method, r.RequestURI, err.Error())
 		return
 	}
+	downloadName := fileObj.Name + "-videos"
+
+	// Calculate the total size of the files
+	totalZipSize := int64(0)
+	for _, file := range files {
+		fullpath := awsBucket.URL(file.S3Path)
+		resp, err := http.Head(fullpath)
+		if err != nil {
+			log.Printf("Failed HEAD for file %s", fullpath)
+			http.Error(w, "Failed to process files for download", 400)
+			return
+		}
+		totalZipSize += resp.ContentLength
+	}
 
 	// Start processing the response
-	w.Header().Add("Content-Disposition", "attachment; filename=\""+downloadas[0]+"\"")
+	w.Header().Add("Content-Disposition", "attachment; filename=\""+downloadName+".zip\"")
 	w.Header().Add("Content-Type", "application/zip")
+	w.Header().Add("Content-Length", strconv.Itoa(int(totalZipSize)))
 
 	// Loop over files, add them to the zip stream
 	zipWriter := zip.NewWriter(w)
