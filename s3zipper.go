@@ -92,7 +92,7 @@ func initConfig() {
 		Region:             defaults(os.Getenv("AWS_REGION"), "us-east-1"),
 		RedisServerAndPort: os.Getenv("REDIS_URL"),
 		RedisPassword:      os.Getenv("REDIS_PASSWORD"),
-		Port:               defaults(os.Getenv("PORT"), "8000"),
+		Port:               defaults(os.Getenv("S3ZIPPER_PORT"), "8000"),
 	}
 }
 
@@ -176,6 +176,7 @@ func getFilesFromRedis(ref string) (filesObj redisDLObject, err error) {
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("%s\t%s\tSTART", r.Method, r.RequestURI)
 	start := time.Now()
 
 	// Get "ref" URL params
